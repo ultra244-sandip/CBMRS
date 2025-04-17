@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/static/styles_main.css" />
+    <link rel="stylesheet" href="/static/styles_chat.css" />
+    <script
+      src="https://kit.fontawesome.com/935c3bf7da.js"
+      crossorigin="anonymous"
+    ></script>
+    <title>Chat with us</title>
+    <style>
+      /* Add styling for the microphone button */
+      button[title="Speak"] {
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        padding: 8px 12px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+        margin-left: 10px;
+      }
+      button[title="Speak"]:hover {
+        background-color: #45a049;
+      }
+      button[title="Speak"]:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="head">
+      <div class="logo-container">
+        <img
+          src="{{url_for('static', filename='/images/logo.png')}}"
+          alt="Image not available"
+        />
+      </div>
+      <div class="user-container dropdown" id="user-menu">
+        <span style="cursor: pointer" onclick="toggleMenu()">
+          <i class="fa-solid fa-circle-user fa-xl" style="color: #000000"></i>
+          <span id="username-display">Guest</span>
+        </span>
+        <div class="dropdown-content" id="dropdown-menu">
+          <a href="/">Home</a>
+          <a href="/loging" id="signin-option">Sign In</a>
+        </div>
+      </div>
+    </div>
+    <div class="chat-container">
+      <div class="chat-messages" id="chat-messages">
+        <!-- Messages will be displayed here -->
+      </div>
+      <div class="chat-input input-area">
+        <input type="text" id="message-input" placeholder="Type a message..." />
+        <i
+          class="fa-solid fa-circle-arrow-right fa-2xl"
+          style="color: #000000"
+          id="send-button"
+        ></i>
+      </div>
+    </div>
+    <script
+      language="JavaScript"
+      type="Text/JavaScript"
+      src="/static/scripts.js"
+    ></script>
+  </body>
+</html>

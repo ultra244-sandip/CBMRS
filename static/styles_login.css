@@ -1,0 +1,65 @@
+html,
+body {
+  scroll-behavior: smooth;
+}
+
+body.swal2-shown {
+  position: fixed !important;
+  width: 100%;
+  overflow-y: scroll !important; /* Prevents scrollbar removal */
+  top: 0;
+  left: 0;
+}
+
+.container {
+  background: white;
+  padding: 20px;
+  border-radius: 5px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  width: 300px; /* Set a fixed width for the container */
+}
+
+.form-container {
+  width: 100%; /* Ensure the form container takes full width */
+  position: relative;
+  top: 50%;
+}
+
+.form-container p {
+  font-size: 12pt;
+}
+
+.form {
+  display: none;
+}
+
+.form.active {
+  display: block;
+}
+
+.container input {
+  width: 100%; /* Make input fields take full width */
+  padding: 10px;
+  margin: 10px 0;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  box-sizing: border-box; /* Include padding and border in element's total width and height */
+}
+
+.container button {
+  background: black;
+  color: white;
+  border: none;
+  padding: 10px;
+  cursor: pointer;
+  width: 100%; /* Make button take full width */
+  border-radius: 5px; /* Add border radius to button */
+}
+
+.hidden {
+  display: none;
+}
+
+p {
+  text-align: center;
+}

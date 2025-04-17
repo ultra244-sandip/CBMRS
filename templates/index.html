@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" type="text/css" href="/static/styles_main.css" />
+    <script
+      src="https://kit.fontawesome.com/935c3bf7da.js"
+      crossorigin="anonymous"
+    ></script>
+    <script>
+      function toggleMenu() {
+        var menu = document.getElementById("user-menu");
+        menu.style.display = menu.style.display === "block" ? "none" : "block";
+      }
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        fetch("/get_user") // Fetch current logged-in user
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.username) {
+              document.querySelector(".button-container").innerHTML = `
+                      <div class="user-container dropdown">
+                          <span style="cursor: pointer" onclick="toggleMenu()">
+                            <i class="fa-solid fa-circle-user fa-xl" style="color: #000000"></i>
+                            ${data.username}</span
+                          >
+                          <div class="dropdown-content" id="user-menu">
+                              <a href="#">Account Details</a>
+                              <a href="/logout">Logout</a>
+                          </div>
+                      </div>
+                  `;
+            }
+          })
+          .catch((error) => console.error("Error fetching user:", error));
+      });
+    </script>
+    <title>Song Recommendation App</title>
+  </head>
+  <body>
+    <div class="head">
+      <div class="logo-container">
+        <img
+          src="{{url_for('static', filename='/images/logo.png')}}"
+          alt="Image is not available"
+        />
+      </div>
+      <div class="button-container">
+        {% if username %}
+        <div class="user-container dropdown">
+          <span style="cursor: pointer" onclick="toggleMenu()">
+            <i class="fa-solid fa-circle-user fa-xl" style="color: #000000"></i>
+            {{username}}</span
+          >
+          <div class="dropdown-content" id="user-menu">
+            <a href="/logout">Logout</a>
+          </div>
+        </div>
+        {% else %}
+        <a href="/loging" target="_self"><button>Login/Register</button></a>
+        {% endif %}
+      </div>
+    </div>
+    <div class="content">
+      <p>Let's start with your <br />Song request</p>
+      <a href="/chatting" target="_self"><button>Start Now</button></a>
+    </div>
+  </body>
+</html>
