@@ -212,21 +212,29 @@ def get_stream_url(song_name, artist_name=None):
     query = song_name
     if artist_name:
         query += " " + artist_name
-    try:
-        search_command = [
-            "yt-dlp",
-            f"ytsearch1:{query}",
-            "--get-url",
-            "-f", "bestaudio",
-            "--no-playlist"
-        ]
-        result = subprocess.run(search_command, capture_output=True, text=True, check=True)
-        url = result.stdout.strip()
-        return url if url else None
-    except subprocess.CalledProcessError as e:
-        app.logger.error(f"Error fetching stream URL for query '{query}': {e}")
-        return None
-
+    for attempt in range(3):
+        try:
+            search_command = [
+                "yt-dlp",
+                f"ytsearch1:{query}",
+                "--get-url",
+                "-f", "bestaudio",
+                "--no-playlist"
+            ]
+            result = subprocess.run(search_command, capture_output=True, text=True, check=True)
+            url = result.stdout.strip()
+            return url if url else None
+        except subprocess.CalledProcessError as e:
+            app.logger.error(f"Attempt {attempt + 1} failed for query '{query}': {e.stderr}")
+            if attempt < 2:
+                time.sleep(2)
+            else:
+                app.logger.warning(f"All retries failed for query '{query}'. Returning None.")
+                return None
+        except Exception as e:
+            app.logger.error(f"Unexpected error for query '{query}': {str(e)}")
+            return None
+            
 import requests
 from flask import request, Response, abort
 
