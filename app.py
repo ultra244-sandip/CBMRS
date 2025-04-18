@@ -219,15 +219,20 @@ def get_stream_url(song_name, artist_name=None):
                 f"ytsearch1:{query}",
                 "--get-url",
                 "-f", "bestaudio",
-                "--no-playlist"
+                "--no-playlist",
+                "--verbose"
             ]
             result = subprocess.run(search_command, capture_output=True, text=True, check=True)
             url = result.stdout.strip()
             return url if url else None
         except subprocess.CalledProcessError as e:
             app.logger.error(f"Attempt {attempt + 1} failed for query '{query}': {e.stderr}")
+            if "HTTP Error 429" in e.stderr:
+                app.logger.error("Rate limit hit.")
+                if attempt == 2:  # Last attempt
+                    return "Sorry, too many requests to YouTube. Please try again later."
             if attempt < 2:
-                time.sleep(2)
+                time.sleep(10)  # Wait 10 seconds before retrying
             else:
                 app.logger.warning(f"All retries failed for query '{query}'. Returning None.")
                 return None
