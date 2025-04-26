@@ -20,6 +20,7 @@
           .then((response) => response.json())
           .then((data) => {
             if (data.username) {
+              console.log(data.username);
               document.querySelector(".button-container").innerHTML = `
                       <div class="user-container dropdown">
                           <span style="cursor: pointer" onclick="toggleMenu()">
@@ -28,7 +29,7 @@
                           >
                           <div class="dropdown-content" id="user-menu">
                               <a href="#">Account Details</a>
-                              <a href="/logout">Logout</a>
+                            <a href="/logout">Log out</a>
                           </div>
                       </div>
                   `;
@@ -59,7 +60,7 @@
           </div>
         </div>
         {% else %}
-        <a href="/loging" target="_self"><button>Login/Register</button></a>
+        <a href="/login" target="_self"><button>Login/Register</button></a>
         {% endif %}
       </div>
     </div>

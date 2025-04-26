@@ -9,27 +9,8 @@
       src="https://kit.fontawesome.com/935c3bf7da.js"
       crossorigin="anonymous"
     ></script>
+    <script src="https://unpkg.com/wavesurfer.js"></script>
     <title>Chat with us</title>
-    <style>
-      /* Add styling for the microphone button */
-      button[title="Speak"] {
-        background-color: #4CAF50;
-        color: white;
-        border: none;
-        padding: 8px 12px;
-        border-radius: 5px;
-        cursor: pointer;
-        font-size: 16px;
-        margin-left: 10px;
-      }
-      button[title="Speak"]:hover {
-        background-color: #45a049;
-      }
-      button[title="Speak"]:disabled {
-        background-color: #cccccc;
-        cursor: not-allowed;
-      }
-    </style>
   </head>
   <body>
     <div class="head">
@@ -46,13 +27,13 @@
         </span>
         <div class="dropdown-content" id="dropdown-menu">
           <a href="/">Home</a>
-          <a href="/loging" id="signin-option">Sign In</a>
+          <a href="/login">Sign In</a>
         </div>
       </div>
     </div>
     <div class="chat-container">
       <div class="chat-messages" id="chat-messages">
-        <!-- Messages will be displayed here -->
+        <!-- Messages and player will be inserted here -->
       </div>
       <div class="chat-input input-area">
         <input type="text" id="message-input" placeholder="Type a message..." />
@@ -61,6 +42,8 @@
           style="color: #000000"
           id="send-button"
         ></i>
+        <button id="mic-button" class="mic-button" style="display: none;">🎤 Speak</button>
+        <button id="voice-toggle-btn" class="voice-toggle-btn" style="display: none;">Toggle Voice</button>
       </div>
     </div>
     <script
