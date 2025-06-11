@@ -4,65 +4,77 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" type="text/css" href="/static/styles_main.css" />
+    <link rel="stylesheet" type="text/css" href="/static/styles_modals.css" />
+    <script
+      src="https://kit.fontawesome.com/935c3bf7da.js"
+      crossorigin="anonymous"
+    ></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
       function toggleMenu() {
-        var menu = document.getElementById("user-menu");
-        menu.style.display = menu.style.display === "block" ? "none" : "block";
+        const menu = document.getElementById("dropdown-menu");
+        if (!menu) return;
+        // Use computed style for reliable toggling.
+        const computedDisplay = window.getComputedStyle(menu).display;
+        console.log("toggleMenu called, computed display:", computedDisplay);
+        menu.style.display = computedDisplay === "none" ? "block" : "none";
       }
-    </script>
-    <script>
-      document.addEventListener("DOMContentLoaded", () => {
-        fetch("/get_user") // Fetch current logged-in user
-          .then((response) => response.json())
-          .then((data) => {
-            if (data.username) {
-              console.log(data.username);
-              document.querySelector(".button-container").innerHTML = `
-                      <div class="user-container dropdown">
-                          <span style="cursor: pointer" onclick="toggleMenu()">
-                            <i class="fa-solid fa-circle-user fa-xl" style="color: #000000"></i>
-                            ${data.username}</span
-                          >
-                          <div class="dropdown-content" id="user-menu">
-                              <a href="#">Account Details</a>
-                            <a href="/logout">Log out</a>
-                          </div>
-                      </div>
-                  `;
-            }
-          })
-          .catch((error) => console.error("Error fetching user:", error));
-      });
     </script>
     <title>Song Recommendation App</title>
   </head>
   <body>
+    <!-- Header Section (Updated to match chatpage) -->
     <div class="head">
       <div class="logo-container">
         <img
-          src="{{url_for('static', filename='/images/logo.png')}}"
-          alt="Image is not available"
+          src="{{ url_for('static', filename='images/logo.png') }}"
+          alt="Logo"
         />
       </div>
-      <div class="button-container">
+      <div class="user-container dropdown" id="user-menu">
         {% if username %}
-        <div class="user-container dropdown">
-          <span style="cursor: pointer" onclick="toggleMenu()">
-            <i class="fa-solid fa-circle-user fa-xl" style="color: #000000"></i>
-            {{username}}</span
-          >
-          <div class="dropdown-content" id="user-menu">
-            <a href="/logout">Logout</a>
-          </div>
+            <span style="cursor: pointer" onclick="toggleMenu()">
+              {% if session.get('subscription') == 'Regular' %}
+              <i class="fa-solid fa-user fa-xl" style="color: #000000"></i>
+              {% elif session.get('subscription') == 'Premium' %}
+              <i class="fa-solid fa-crown fa-xl" style="color: #ecd927dc"></i>
+              {% endif %}
+              <span id="username-display" style="font-weight: bold">{{ username }}</span>
+            </span>
+        <div class="dropdown-content" id="dropdown-menu">
+          <a href="/">Home</a>
+          <a href="#" onclick="showAccountDetails()">Account Details</a>
+          <a href="#" onclick="showChatHistory()">Show Chat History</a>
+          {% if session.get('subscription') != 'Premium' %}
+          <a href="#" onclick="upgradeToPremium()">Upgrade to Premium</a>
+          {% endif %}
+          <hr style="margin: 0" />
+          <a href="/logout" style="color: red">Log Out</a>
+          {% else %}
+          <a href="/login" target="_self"><button>Login/Register</button></a>
+          {% endif %}
         </div>
+      </div>
+    </div>
+
+    <!-- Main Content Section -->
+    <div class="content">
+      <p>Let's start with your <br />Song request</p>
+      <div class="button-wrapper">
+        {% if username %}
+        <a href="/chatting" target="_self">
+          <button>Start Now</button>
+        </a>
         {% else %}
-        <a href="/login" target="_self"><button>Login/Register</button></a>
+        <a href="/chatting?guest=true" target="_self">
+          <button>Start Now</button>
+        </a>
         {% endif %}
       </div>
     </div>
-    <div class="content">
-      <p>Let's start with your <br />Song request</p>
-      <a href="/chatting" target="_self"><button>Start Now</button></a>
-    </div>
+    {% include 'modals.html' %}
+    <script src="/static/scripts.js"></script>
+    <script src="/static/del.js"></script>
+    <script src="/static/modals_utils.js"></script>
   </body>
 </html>

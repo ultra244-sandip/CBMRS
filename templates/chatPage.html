@@ -5,35 +5,69 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="/static/styles_main.css" />
     <link rel="stylesheet" href="/static/styles_chat.css" />
+    <link rel="stylesheet" href="/static/styles_modals.css" />
     <script
       src="https://kit.fontawesome.com/935c3bf7da.js"
       crossorigin="anonymous"
     ></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <title>Chat with us</title>
+    <script>
+      // Inject chatId using tojson to preserve type:
+      var chatId = {{ chat_id|default(None)|tojson }};
+      console.log("Current chatId:", chatId);
+      // Also ensure chatHistory is defined:
+      var chatHistory = {{ chat_messages|default([])|tojson }};
+      console.log("Initial chatHistory:", chatHistory);
+      </script>
   </head>
   <body>
+    <!-- Header Section -->
     <div class="head">
       <div class="logo-container">
         <img
-          src="{{url_for('static', filename='/images/logo.png')}}"
+          src="{{ url_for('static', filename='images/logo.png') }}"
           alt="Image not available"
         />
       </div>
       <div class="user-container dropdown" id="user-menu">
         <span style="cursor: pointer" onclick="toggleMenu()">
+          {% if 'Guest' %}
+          <i class="fa-solid fa-robot fa-xl" style="color: #000000"></i>
+          {% elif session.get('subscription') == 'Regular' %}
           <i class="fa-solid fa-circle-user fa-xl" style="color: #000000"></i>
-          <span id="username-display">Guest</span>
-        </span>
+          {% elif session.get('subscription') == 'Premium' %}
+          <i class="fa-solid fa-crown fa-xl" style="color: #ecd927dc"></i>
+          {% endif %}
+          <span id="username-display" style="font-weight: bold">
+          {{ username if username else 'Guest' }}</span>
+          </span>
         <div class="dropdown-content" id="dropdown-menu">
           <a href="/">Home</a>
+          {% if username %}
+          <a href="/chatting">New Chat</a>
+          <a href="#" onclick="showAccountDetails()">Account Details</a>
+          <a href="#" onclick="showChatHistory()">Show Chat History</a>
+          {% if session.get('subscription') != 'Premium' %}
+          <a href="#" onclick="upgradeToPremium()">Upgrade to Premium</a>
+          {% endif %}
+          <hr style="margin: 0" />
+          <a href="/logout" style="color: red">Log Out</a>
+          {% else %}
           <a href="/login">Sign In</a>
+          {% endif %}
         </div>
       </div>
     </div>
+
+    <!-- Chat Container -->
     <div class="chat-container">
       <div class="chat-messages" id="chat-messages">
-        <!-- Messages and player will be inserted here -->
-      </div>
+        {% if chat_messages %} {% for message in chat_messages %} {% if
+        message.text and message.text.strip() %}
+        <div class="{{ message.sender }}-message">{{ message.text | e}}</div>
+        {% endif %} {% endfor %} {% endif %}
+        </div>
       <div class="chat-input input-area">
         <input type="text" id="message-input" placeholder="Type a message..." />
         <i
@@ -41,14 +75,18 @@
           style="color: #000000"
           id="send-button"
         ></i>
-        <button id="mic-button" class="mic-button" style="display: none;">🎤 Speak</button>
-        <button id="voice-toggle-btn" class="voice-toggle-btn" style="display: none;">Toggle Voice</button>
+        {% if username %}
+        <i
+          class="fa-solid fa-microphone fa-2xl"
+          style="color: #000000"
+          id="mic-button"
+        ></i>
+        {% endif %}
       </div>
     </div>
-    <script
-      language="JavaScript"
-      type="Text/JavaScript"
-      src="/static/scripts.js"
-    ></script>
+    {% include 'modals.html' %}
+    <script src="/static/scripts.js"></script>
+    <script src="/static/del.js"></script>
+    <script src="/static/modals_utils.js"></script>
   </body>
 </html>

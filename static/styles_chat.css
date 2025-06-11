@@ -31,12 +31,12 @@
 }
 
 .received-message {
-  background-color: #ccc;
+  background-color: #ffffff;
   color: black;
   padding: 10px;
   border-radius: 5px;
   margin-bottom: 10px;
-  max-width: 80%;
+  max-width: 50%;
   text-align: left;
   align-self: flex-start;
 }
@@ -46,7 +46,6 @@
   display: flex;
   padding: 5px;
   justify-content: space-between;
-  align-items: center;
 }
 
 .chat-input input {
@@ -62,7 +61,8 @@
   cursor: pointer;
 }
 
-.mic-button, .voice-toggle-btn {
+.mic-button,
+.voice-toggle-btn {
   margin-left: 10px;
   padding: 10px;
   background-color: #000;
@@ -104,7 +104,6 @@
   z-index: 0; /* Ensure it stays behind controls */
 }
 
-
 .player-controls {
   position: relative; /* Ensure controls are above background */
   z-index: 1;
@@ -122,11 +121,6 @@
   overflow-y: auto; /* Allow scrolling */
 }
 
-.chat-messages {
-  max-height: 75vh;
-  overflow-y: auto;
-}
-
 .custom-player {
   position: relative;
   align-self: flex-start;
@@ -134,3 +128,49 @@
   z-index: 1000;
 }
 
+/* --- Feedback Buttons Styles --- */
+.feedback-container {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 5px;
+}
+
+.feedback-btn {
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 50%;
+  padding: 5px 8px;
+  margin-left: 5px;
+  cursor: pointer;
+  font-size: 18px;
+  transition: background-color 0.3s ease;
+}
+
+.feedback-btn:hover {
+  background-color: #ddd;
+}
+
+/* Optional: Style for when a button is active/selected */
+.feedback-btn.active {
+  background-color: #8bc34a; /* e.g., green for like */
+  color: #fff;
+}
+.feedback-btn.dislike.active {
+  background-color: #f44336; /* e.g., red for dislike */
+  color: #fff;
+}
+
+#start-now,
+#chat-history-btn {
+  width: 150px; /* Consistent width */
+  height: 40px; /* Consistent height */
+  font-size: 16px; /* Consistent text size */
+  border-radius: 20px; /* Matching oval shape */
+  background-color: black; /* Matching color from Image 3 */
+  color: white; /* Matching text color */
+}
+.timestamp {
+  font-size: 0.8em;
+  color: #666;
+  margin-right: 10px;
+}

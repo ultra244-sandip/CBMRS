@@ -29,7 +29,6 @@ def init_auth_db():
                             username TEXT UNIQUE,
                             email TEXT UNIQUE,
                             password TEXT,
-                            verified INTEGER DEFAULT 0,
                             subscription TEXT DEFAULT 'Regular')''')
         conn.commit()
 
@@ -69,12 +68,12 @@ def register_user(username, email, password, final=False):
         cursor = db.cursor()
         new_id = generateUserId()
         hashed_password = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-        verified_final = 1 if final else 0
+        subscription = 'Regular'
 
         cursor.execute(
-            """INSERT INTO Users (id, username, email, password, verified)
+            """INSERT INTO Users (id, username, email, password, subscription)
                VALUES (?, ?, ?, ?, ?)""",
-            (new_id, username, email, hashed_password, verified_final)
+            (new_id, username, email, hashed_password, subscription)
         )
         db.commit()
         
@@ -94,22 +93,50 @@ def register_user(username, email, password, final=False):
 def login_user(username, password):
     db = get_db()
     cursor = db.cursor()
-    cursor.execute("SELECT password, verified, email FROM Users WHERE username = ?", (username,))
+    cursor.execute("SELECT password, subscription, email FROM Users WHERE username = ?", (username,))
     result = cursor.fetchone()
     close_db()
 
     if result:
-        stored_password, verified, email = result
+        stored_password, subscription, email = result
         if bcrypt.checkpw(password.encode(), stored_password.encode()):
-            if verified == 0:
-                return {
-                    "success" : False,
-                    "message" : "Email not verified",
-                    "email" : email
-                }
             return "Login successful"
         return "Incorrect password"
     return "User not found"
+
+def get_email(username):
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT email FROM Users WHERE username = ?",(username,))
+    result = cursor.fetchone()
+    if result:
+        return result[0]
+    return None
+
+def get_subscription(username):
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT subscription FROM Users WHERE username = ?",(username,))
+    result = cursor.fetchone()
+    if result:
+        return result[0]
+    return None
+
+def update_subscription_status(username):
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT subscription FROM Users WHERE username = ?",(username,))
+    result = cursor.fetchone()
+    if result:
+        if result[0] == "Regular":
+            cursor.execute("UPDATE Users SET subscription = 'Premium' WHERE username = ?",(username,))
+            db.commit()
+            return "Premium"
+        elif result[0] == "Premium":
+            cursor.execute("UPDATE Users SET subscription = 'Regular' WHERE username = ?",(username,))
+            db.commit()
+            return "Regular"
+    return None
 
 # Initialize DB on first import
 init_auth_db()

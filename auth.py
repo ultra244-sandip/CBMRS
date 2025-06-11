@@ -3,6 +3,10 @@ import time
 import smtplib
 from flask import session
 
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.header import Header
+
 # Email Credentials and SMTP Configurations
 SENDER_EMAIL = "omegaspecial3@gmail.com"
 APP_PASSWORD = "tqqj kyww kvzt nrka"
@@ -11,12 +15,20 @@ SMTP_PORT = 587
 
 def send_email(recipient_email, subject, body):
     try:
-        # Sends an email using the pre-configured SMTP credentials.
+        # Construct MIME email
+        msg = MIMEMultipart()
+        msg['From'] = SENDER_EMAIL
+        msg['To'] = recipient_email
+        msg['Subject'] = Header(subject, 'utf-8')
+
+        # Attach body as HTML with UTF-8
+        msg.attach(MIMEText(body, 'html', 'utf-8'))
+
+        # Send via SMTP
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()  # Secure the connection with TLS
             server.login(SENDER_EMAIL, APP_PASSWORD)
-            message = f"Subject: {subject}\n\n{body}"
-            server.sendmail(SENDER_EMAIL, recipient_email, message)
+            server.sendmail(SENDER_EMAIL, recipient_email, msg.as_string())
     except Exception as e:
         print("Error sendeing email: ",e)
 
@@ -29,8 +41,8 @@ def generate_otp():
 def send_otp_via_email(email):
     # Generates an OTP, sends it to the provided email address, and stores the OTP and its expiry in the session.
     otp, expiry = generate_otp()
-    subject = "Your OTP Code"
-    body = f"Your OTP is {otp}. It is valid for 5 minutes."
+    subject = "✉ Your OTP Code"
+    body = f"Your OTP is <b>{otp}</b>. It is valid for 5 minutes."
     send_email(email, subject, body)
     
     # Store OTP details in the Flask session (temporary storage)
@@ -61,3 +73,15 @@ def verify_otp(user_input):
         return True
     
     return False
+
+def subscription_mail(email):
+    subject = "🥳 Hurray! You've just been upgraded"
+    body = """
+    <html>
+      <body>
+        <p>Thanks for joining our <b>Premium Members</b> community.<br>
+        As a reward, you will get <i>nothing</i> 🫣</p>
+      </body>
+    </html>
+    """
+    send_email(email, subject, body)

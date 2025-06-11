@@ -174,7 +174,7 @@ document.addEventListener('DOMContentLoaded', () => {
           } else {
             showToast(data.message || "Registration complete!", "success");
             otpInputElem.value = "";
-            setTimeout(() => window.location.href = "/loging", 1500);
+            setTimeout(() => window.location.href = "/login", 1500);
           }
         })
         .catch(error => {

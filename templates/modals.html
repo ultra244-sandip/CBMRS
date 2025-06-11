@@ -1,0 +1,39 @@
+<!-- Chat History Modal -->
+<div id="chatHistoryModal" class="modal">
+  <div class="modal-content chat-history">
+    <span class="close" onclick="closeChatModal()">&times;</span>
+    <h2 style="text-align: center">Your Chat History</h2>
+    <div style="max-height: 60vh; overflow-y: auto">
+      <ul style="list-style-type: none; padding: 0px">
+        {% for chat in chat_history %}
+        <li style="margin-bottom: 10px">
+          <a
+            href="{{ url_for('chatting', chat_id=chat._id) }}"
+            style="text-decoration: none"
+          >
+            Chat from {{ chat.created_at }}
+          </a>
+          <button
+            class="delete-chat"
+            data-chat-id="{{ chat._id }}"
+            style="margin-left: 10px; border: none"
+          >
+            🗑️ Delete
+          </button>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Account Details Modal -->
+<div class="modal" id="accountDetailsModal">
+  <div class="modal-content account-details">
+    <span class="close" onclick="closeModal()">&times;</span>
+    <h2 style="text-align: center">Account Details</h2>
+    <p><strong>User Name: </strong>{{session.get('username')}}</p>
+    <p><strong>Email Address: </strong>{{session.get('email')}}</p>
+    <p><strong>Subscription Mode: </strong>{{session.get('subscription')}}</p>
+  </div>
+</div>
