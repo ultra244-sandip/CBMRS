@@ -2,7 +2,7 @@ import os
 import numpy as np
 import time
 import pandas as pd
-
+import json
 from google import genai
 import subprocess
 import re
@@ -30,6 +30,9 @@ from Credentials import register_user, login_user, get_db, close_db, get_email, 
 
 # Import functions to verify email
 from auth import send_otp_via_email, verify_otp, subscription_mail
+from entity_extractor import EntityExtractor
+
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -91,6 +94,7 @@ music_df['artist_name'] = music_df['artist_name'].astype(str).apply(normalize_ar
 music_df['mood_label'] = music_df['mood_label'].astype(str).apply(normalize_text)
 music_df['language'] = music_df['language'].astype(str).apply(normalize_text)
 
+
 # Define the helper function.
 def split_artist_field(artist_field):
     # If a comma is present, split by comma.
@@ -126,6 +130,14 @@ all_languages = music_df['language'].unique().tolist()
 all_albums = music_df['album_movie_name'].unique().tolist()
 all_song_names = music_df['song_name'].unique().tolist()
 
+extractor = EntityExtractor(
+    all_languages,
+    all_moods,
+    all_artists,
+    all_albums,
+    all_song_names
+)
+
 
 def find_full_song_match(candidate_song, all_song_names, score_cutoff=80):
     if not candidate_song.strip():
@@ -145,15 +157,9 @@ def find_full_song_match(candidate_song, all_song_names, score_cutoff=80):
     
 # Assuming all_moods, all_languages, all_artists, all_albums, all_song_names are defined
 stop_words = {"suggest me", "recommend me","old", "some", "a", "the", "of", "by", "in", "for", "to", "and", "or", "but", "is", "are", "was", "were", "be", "been", "being"}
-import re
-import unicodedata
-import string
-from fuzzywuzzy import process, fuzz
-import spacy
-from spacy.matcher import PhraseMatcher
 
-# Load the spaCy model
-nlp = spacy.load("en_core_web_sm")
+
+
 
 # These globals should be defined (or imported) elsewhere:
 # all_moods, all_languages, all_artists, all_song_names, all_albums
@@ -249,212 +255,6 @@ def fallback_artist_from_query(query, all_artists, min_ngram=2, max_ngram=5, sco
     if best_candidate:
         print(f"Fallback matched '{best_candidate}' with score {best_score} from query segment.")
     return best_candidate
-
-
-def extract_entities_nlp(user_input):
-    original_query = user_input.strip()
-    print(f"Original query: '{original_query}'")
-
-    cleaned_query = preprocess_query(original_query)
-    normalized_query = normalize_text(cleaned_query)
-    print(f"Cleaned & Normalized query: '{normalized_query}'")
-    low_query = original_query.lower()
-
-    # New album override block:
-    album_keywords = {"album", "soundtrack", "movie album", "movie"}
-    if any(keyword in low_query for keyword in album_keywords):
-        album_requested = True
-        print("Album keyword detected; skipping artist extraction.")
-        found_artist = None  # ensure no artist is set
-    else:
-        album_requested = False
-
-    # Initialize other variables.
-    found_mood, found_language = None, None
-    # Do NOT reinitialize found_artist; we already set it (or cleared it) above.
-    found_album = None
-    found_song = None
-    is_info_query = False
-    explicit_artist_extraction = False
-    is_artist_request = False
-
-    # --------------------  
-    # **Step 1: Detect Information Retrieval Queries Early**
-    info_triggers = [
-        "tell me", "do you know", "tell me about",
-        "who is", "where is", "what is", "when was",
-        "information about", "how does", "explain"
-    ]
-
-    if any(trigger in low_query for trigger in info_triggers):
-        is_info_query = True
-        print("Information retrieval query detected; skipping song and album extraction.")
-
-    # --- Step 1: Extract Language First ---
-    doc = nlp(cleaned_query)
-    matcher_language = PhraseMatcher(nlp.vocab, attr="LOWER")
-    language_patterns = [nlp.make_doc(lang) for lang in all_languages]
-    matcher_language.add("LANGUAGE", language_patterns)
-    matches_language = matcher_language(doc)
-    if matches_language:
-        match_id, start, end = matches_language[0]
-        found_language = doc[start:end].text.lower()
-        print(f"Found language (via spaCy): '{found_language}'")
-    else:
-        print("No language detected.")
-
-    # --- Step 2: Extract Mood Before Artist ---
-    matcher_mood = PhraseMatcher(nlp.vocab, attr="LOWER")
-    mood_patterns = [nlp.make_doc(mood) for mood in all_moods]
-    matcher_mood.add("MOOD", mood_patterns)
-    matches_mood = matcher_mood(doc)
-    if matches_mood:
-        match_id, start, end = matches_mood[0]
-        found_mood = doc[start:end].text.lower()
-        print(f"Found mood (via spaCy): '{found_mood}'")
-    else:
-        print("No mood detected.")
-
-    # --- Step 3: Extract Artist (only if no album keyword detected) ---
-    if not album_requested:
-        # Step 3a: NER-based Extraction
-        for ent in doc.ents:
-            if ent.label_ == "PERSON":
-                candidate = ent.text or ""
-                candidate_artists = split_artists(candidate)
-                print(f"NER candidate artists from '{candidate}': {candidate_artists}")
-                preferred_artist = select_preferred_artist(original_query, candidate_artists)
-                if preferred_artist:
-                    candidate = preferred_artist
-                    print(f"Preferred artist selected via NER: '{candidate}'")
-                best_artist = process.extractOne(candidate, all_artists, scorer=fuzz.token_set_ratio, score_cutoff=70)
-                if best_artist:
-                    found_artist = best_artist[0]
-                    print(f"Extracted artist via NER after refinement: '{found_artist}' with score {best_artist[1]}")
-                    explicit_artist_extraction = True
-                    break
-
-        # Step 3b: Regex-based Extraction
-        if not found_artist:
-            artist_pattern = re.compile(r'(?:songs?\s+(?:by|of)\s+)(.+)', re.IGNORECASE)
-            match = artist_pattern.search(original_query)
-            if match:
-                artist_candidate = match.group(1).strip()
-                if artist_candidate.lower() in all_moods:
-                    print(f"Skipping '{artist_candidate}' as it's a mood, not an artist.")
-                    found_artist = None
-                else:
-                    candidate_artists = split_artists(artist_candidate)
-                    preferred_artist = select_preferred_artist(original_query, candidate_artists)
-                    if preferred_artist:
-                        best_artist = process.extractOne(preferred_artist, all_artists, scorer=fuzz.WRatio, score_cutoff=70)
-                        if best_artist:
-                            candidate_from_db = best_artist[0]
-                            if len(preferred_artist.split()) > len(candidate_from_db.split()):
-                                found_artist = preferred_artist
-                            else:
-                                found_artist = candidate_from_db
-                            explicit_artist_extraction = True
-                            print(f"Extracted artist from explicit pattern: '{found_artist}' with score {best_artist[1]}")
-
-            # Step 3c: Fallback Extraction via Sliding Window
-            if not found_artist:
-                filtered_query = original_query
-                if found_language:
-                    filtered_query = filtered_query.replace(found_language, "")
-                if found_mood:
-                    for mt in found_mood.split():
-                        filtered_query = filtered_query.replace(mt, "")
-                filtered_query = filtered_query.strip()
-                filler_words = {"play", "songs", "song", "listen", "music", "some", "any"}
-                filtered_tokens = [tok for tok in filtered_query.split() if tok.lower() not in filler_words]
-                filtered_query = " ".join(filtered_tokens).strip()
-                if len(filtered_query.split()) >= 2:
-                    fallback_candidate = fallback_artist_from_query(filtered_query, all_artists)
-                    if fallback_candidate:
-                        found_artist = fallback_candidate
-                        explicit_artist_extraction = True
-                        print(f"Fallback extraction found artist: '{found_artist}'.")
-                else:
-                    print("Filtered query too generic; skipping fallback extraction.")
-    else:
-        # When album_requested is True, we skip artist extraction entirely.
-        print("Skipping artist extraction because album_requested is True.")
-
-    # --- Step 4: Extract Album (if applicable) ---
-    if re.search(r'\b(movie|album)\b', low_query, re.IGNORECASE):
-        temp_query = re.sub(r'\b(play|recommend|suggest|find|please)\b', '', original_query).strip()
-        album_candidate = " ".join([tok for tok in temp_query.split() if tok.lower() not in {"movie", "album", "songs", "song", "of", "by"}]).strip()
-        print(f"Album candidate: '{album_candidate}'")
-        if album_candidate:
-            best_album = process.extractOne(album_candidate, all_albums, scorer=fuzz.ratio, score_cutoff=60)
-            if best_album:
-                found_album = best_album[0]
-                print(f"Found album: '{found_album}' with score {best_album[1]}")
-            else:
-                print("No album match found.")
-        # --------------------  
-        # **Step 7: Specific Song Extraction**
-        if explicit_artist_extraction or album_requested:
-            print("Skipping song extraction due to explicit artist or album request.")
-            found_song = None
-            is_artist_request = True
-        else:
-            # Build candidate tokens from the normalized query.
-            query_tokens = normalized_query.split()
-            filter_tokens = {"of", "by", "me", "please", "the","some", "a", "an", "songs", "song"}
-            candidate_tokens = [
-                tok.translate(str.maketrans('', '', string.punctuation))
-                for tok in query_tokens if tok.lower() not in filter_tokens
-            ]
-            
-            # Concatenate tokens to form the candidate song string.
-            candidate_song = " ".join(candidate_tokens).strip()
-            
-            # -- Remove the mood phrase from candidate song string if it exists.
-            if found_mood:
-                # Remove the exact mood phrase if present.
-                candidate_song = candidate_song.replace(found_mood, "").strip()
-            
-            print(f"Candidate song string: '{candidate_song}'")
-            
-            # If the candidate song string is empty or only a filler word, treat as artist-only query.
-            filler_words = {"some", "any", "songs", "track", "music"}
-            if candidate_song in filler_words or candidate_song == "":
-                print("No valid candidate song extracted; treating as an artist-only or recommendation query.")
-                is_artist_request = True
-                found_song = None
-            else:
-                candidate_token_count = len(candidate_song.split())
-                score_cutoff = 90 if candidate_token_count == 1 else 80
-                if candidate_song in all_song_names:
-                    found_song = candidate_song
-                    print(f"Found song by exact match: '{found_song}'")
-                else:
-                    best_match = process.extractOne(candidate_song, all_song_names,
-                                                    scorer=fuzz.token_set_ratio, score_cutoff=score_cutoff)
-                    if best_match:
-                        found_song = best_match[0]
-                        print(f"Found song: '{found_song}' with score {best_match[1]}")
-                    else:
-                        print("No matching song found through fuzzy search.")
-                        found_song = None
-                is_artist_request = False
-
-    # --------------------  
-    # **Step 8: Final Debug Summary**
-    print("\n--- Extracted Entities ---")
-    print(f"Artist: {found_artist}")
-    print(f"Mood: {found_mood}")
-    print(f"Language: {found_language}")
-    print(f"Album: {found_album}")
-    print(f"Song: {found_song}")
-    print(f"Album requested: {album_requested}")
-    print(f"Info query: {is_info_query}")
-    print(f"Artist-only query: {is_artist_request}")
-    print("-------------------------\n")
-
-    return found_artist, found_mood, found_language, found_album, found_song, album_requested, is_info_query
 
 def construct_prompt(user_input, intent, artist=None, mood=None, language=None, matched_songs=None):
     if intent == "information_request":
@@ -719,6 +519,7 @@ def chatting(chat_id=None):
                 "follow_up_artist": chat.get("follow_up_artist"),
                 "follow_up_album": chat.get("follow_up_album"),
                 "follow_up_mood": chat.get("follow_up_mood"),
+                "follow_up_language": chat.get("follow_up_language"),
             }
         else:
             app.logger.warning("No chat found with chat_id: %s", chat_id)
@@ -727,6 +528,7 @@ def chatting(chat_id=None):
         # New chat session: Clear previous session data
         app.logger.info("No chat id provided, starting a new chat session.")
         session.pop('follow_up_mood', None)
+        session.pop('follow_up_language', None)
         session.pop('follow_up_artist', None)
         session.pop('follow_up_album', None)
         session.pop('recommended_songs', None)
@@ -760,9 +562,13 @@ def save_chat():
         "current_index": session.get('current_index', -1),
         "played_songs": session.get('played_songs', []),
         "follow_up_artist": session.get('follow_up_artist'),
-        "follow_up_mood": session.get('follow_up_mood')
+        "follow_up_mood": session.get('follow_up_mood'),
+        "follow_up_album": session.get('follow_up_album'),
+        "follow_up_language": session.get('follow_up_language')
     }
     app.logger.info("Saving chat with follow_up_mood=%s", state["follow_up_mood"])
+    app.logger.info("Saving chat with follow_up_language=%s", state["follow_up_language"])
+    app.logger.info("Saving chat with follow_up_album=%s", state["follow_up_album"])
 
     if chat_id:
         # Update existing chat – this avoids duplicate entries.
@@ -776,6 +582,8 @@ def save_chat():
                     "played_songs": state["played_songs"],
                     "follow_up_artist": state["follow_up_artist"],
                     "follow_up_mood": state["follow_up_mood"],
+                    "follow_up_language": state["follow_up_language"],
+                    "follow_up_album": state["follow_up_album"],
                     "updated_at": datetime.now(ZoneInfo("Asia/Kolkata"))
                 }}
             )
@@ -795,6 +603,9 @@ def save_chat():
         data["played_songs"] = state["played_songs"]
         data["follow_up_artist"] = state["follow_up_artist"]
         data["follow_up_mood"] = state["follow_up_mood"]
+        data["follow_up_language"] = state["follow_up_language"]
+        data["follow_up_album"] = state["follow_up_album"]
+        
         
         app.logger.info("Creating new chat with created_at: %s", data['created_at'])
         try:
@@ -877,22 +688,86 @@ def update_session_state(new_data: dict) -> None:
 
     logging.info("Session after merging: %s", dict(session))
 
-    
 @app.route('/chat', methods=['POST'])
 def chat():
     data = request.get_json()
-    # If auto_greeting flag is sent, we ignore user_input.
     auto_greeting = data.get("auto_greeting", False)
     user_input = data.get("user_input", "").strip()
     chat_id = data.get("chat_id", "").strip()
-    is_affirmation = data.get("is_affirmation", False)
+    # Note: you can still check the is_affirmation flag from the JSON if required.
+    is_affirmation_flag = data.get("is_affirmation", False)
 
-    # Check negative response – not needed for auto-greeting.
+    # Check negative response early
     if not auto_greeting and is_negative(user_input):
         response_text = "Got it, let me know if you need anything else."
         return jsonify({"response": response_text})
 
-    # If auto_greeting is True OR we detect no chat_id (i.e., a new chat), then create a new chat.
+    # Affirmation Branch
+    affirmative_set = {"yes", "yeah", "yep", "ok", "okay", "sure"}
+    if user_input.strip().lower() in affirmative_set or is_affirmative(user_input):
+        preferred_language = session.get("preferred_language", "").strip()
+        if session.get("follow_up_artist") and session.get("follow_up_mood"):
+            artist_filter = session.get("follow_up_artist")
+            mood_filter = session.get("follow_up_mood")
+            additional_songs = music_df[
+                (music_df['artist_name'].str.lower() == artist_filter.lower()) &
+                (music_df['mood_label'].str.contains(mood_filter, case=False, na=False))
+            ]
+            response_msg = f"Here are more {preferred_language.title()} songs by {artist_filter.title()} that match your mood."
+        elif session.get("follow_up_artist"):
+            artist_filter = session.get("follow_up_artist")
+            additional_songs = music_df[music_df['artist_name'].str.lower() == artist_filter.lower()]
+            response_msg = f"Here are more {preferred_language.title()} songs by {artist_filter.title()}."
+        elif session.get("follow_up_album"):
+            album_filter = session.get("follow_up_album")
+            additional_songs = music_df[music_df['album_movie_name'].str.lower() == album_filter.lower()]
+            response_msg = f"Here are more songs from the album {album_filter.title()}."
+        elif session.get("follow_up_mood"):
+            mood_filter = session.get("follow_up_mood")
+            additional_songs = music_df[music_df['mood_label'].str.contains(mood_filter, case=False, na=False)]
+            response_msg = f"Here are more {preferred_language.title()} songs that match your mood."
+        else:
+            return jsonify({"response": "No further recommendations available.", "suggestions": []})
+        
+        # Apply language filtering if preferred_language is set.
+        if preferred_language:
+            additional_songs = additional_songs[additional_songs['language'].str.lower() == preferred_language.lower()]
+
+        # Save a copy for later reference.
+        original_additional = additional_songs.copy()
+        
+        # Exclude previously recommended songs.
+        prev_recs = session.get("recommended_songs", [])
+        prev_song_ids = {song.get("track_id") for song in prev_recs if song.get("track_id")}
+        if not prev_song_ids:
+            # fallback to song names if track ids are not available
+            prev_song_ids = {song["song_name"].strip().lower() for song in prev_recs}
+        additional_songs = additional_songs[~additional_songs['track_id'].isin(prev_song_ids)]
+
+        # If filtering out previous recommendations yields an empty result but the original set is not empty,
+        # then use the original (unfiltered) recommendations.
+        if additional_songs.empty and not original_additional.empty:
+            additional_songs = original_additional
+
+        # Deduplicate and limit to a maximum sample.
+        additional_songs = additional_songs.drop_duplicates(subset=['song_name'])
+        if len(additional_songs) > 5:
+            additional_songs = additional_songs.sample(n=5)
+        
+        suggestions = additional_songs.copy().replace({np.nan: None}).to_dict(orient='records')
+        session["recommended_songs"] = suggestions
+        session["current_index"] = -1
+        session.modified = True
+        
+        return jsonify({"response": response_msg, "suggestions": suggestions})
+    
+    # New Query: Clear the previous follow-up keys.
+    session.pop("follow_up_artist", None)
+    session.pop("follow_up_album", None)
+    session.pop("follow_up_mood", None)
+    session.pop("follow_up_language", None)
+
+    # If auto_greeting is True OR no chat_id (i.e., new chat), then create a new chat.
     if auto_greeting or not chat_id or chat_id == "None":
         greeting_messages = [
             "Hello there! How can I assist you with your music journey today?",
@@ -918,163 +793,83 @@ def chat():
         try:
             result = chats_collection.insert_one(new_chat)
             new_id = str(result.inserted_id)
-            # Return the greeting and the new chat_id 
             return jsonify({"response": greeting, "chat_id": new_id})
         except Exception as e:
             app.logger.error("Error creating new chat: %s", e)
             return jsonify({"error": str(e)}), 500
-        
-    intent = classify_intent(user_input)
-    if intent == "greeting":
+
+    # If the query appears as a greeting…
+    if classify_intent(user_input) == "greeting":
         response_text = ("Hello! How can I assist you with music today? "
                          "You can ask for songs by a specific artist, mood, or movie album.")
         return jsonify({"response": response_text})
-    
-    # If no user input is provided, return an error.
+
     if not user_input and not is_affirmation:
         return jsonify({"error": "No user input provided."}), 400
-      
-    # Define specific phrases that unambiguously indicate a personal playlist query.
+
+    # Define specific phrases that indicate a personal playlist query.
     specific_playlist_phrases = [
-        "my playlist","playlist","my playlist songs","playlist songs" "my liked songs", "my favourite songs", "my favorite songs", "liked songs","favourite songs"
+        "my playlist", "playlist", "my playlist songs", "playlist songs", 
+        "my liked songs", "my favourite songs", "my favorite songs", 
+        "liked songs", "favourite songs"
     ]
-    
-    # Check if the query includes any of these specific phrases.
     playlist_query = any(phrase in user_input.lower() for phrase in specific_playlist_phrases)
     
-    # Only for playlist queries, enforce that the user must be logged in.
+    # For playlist queries, enforce that the user must be logged in.
     user_id = session.get("username")
     if playlist_query:
         if not user_id:
-            # Only logged-in users can access personal playlists.
             return jsonify({"error": "You must be logged in to use your playlist"}), 401
         
-        # Optionally, check for language filtering.
         preferred_language = None
         for lang in all_languages:
             if lang in user_input.lower():
                 preferred_language = lang
                 break
-              
         liked_song_ids = get_liked_song_ids(user_id)
-        
         if liked_song_ids:
-            # Assume your music_df contains a field "track_id" that uniquely identifies songs.
             liked_songs_df = music_df[music_df["track_id"].isin(liked_song_ids)]
-            
             if preferred_language:
                 liked_songs_df = liked_songs_df[liked_songs_df["language"].str.lower() == preferred_language.lower()]
-            
             suggestions = liked_songs_df.copy().replace({np.nan: None}).to_dict(orient='records')
             response_msg = "Here are your liked songs." if suggestions else "You have no liked songs matching that language."
         else:
             response_msg = "You have not liked any songs yet."
+        return jsonify({"response": response_msg, "suggestions": suggestions if liked_song_ids else []})
     
-        return jsonify({
-            "response": response_msg,
-            "suggestions": suggestions if liked_song_ids else []
-        })
+
+    # -------------------------- Normal Query Branch --------------------------
+    # Use the modified entity_extractor method to obtain entities.
+    extracted = extractor.extract(user_input)
+    extracted_artist = extracted.get("artist")
+    extracted_mood = extracted.get("mood")
+    extracted_language = extracted.get("language")
+    extracted_album = extracted.get("album")
+    extracted_song = extracted.get("song")
+    album_requested = extracted.get("album_requested")
+    is_info_query = extracted.get("is_info_query")
+    is_artist_request = extracted.get("is_artist_request")
     
-    def filter_disliked_songs(df, user_id):
-        if user_id:
-            from mongo_integration import get_disliked_song_ids
-            disliked_songs = get_disliked_song_ids(user_id)
-            return df[~df['track_id'].isin(disliked_songs)]
-        return df
-
-    if not is_affirmation:
-        extracted_artist, extracted_mood, extracted_language, extracted_album, extracted_song, album_requested, is_info_query = extract_entities_nlp(user_input)
-        update_data = {}
-
-        if extracted_album:
-            update_data["follow_up_album"] = extracted_album
-            # Explicitly set related keys to None if album is specified
-            update_data["follow_up_artist"] = None
-            update_data["follow_up_mood"] = None
-            update_data["follow_up_language"] = None
-        else:
-            if extracted_artist:
-                update_data["follow_up_artist"] = extracted_artist
-            if extracted_mood:
-                update_data["follow_up_mood"] = extracted_mood
-            if extracted_language:
-                update_data["follow_up_language"] = extracted_language
-            else:
-                update_data["follow_up_language"] = None  # or leave unchanged if that's your intent
-
-        update_session_state(update_data)
-
-        app.logger.info("Session after update: follow_up_mood=%s", session.get("follow_up_mood"))
-
-    # Affirmation Branch Processing
-    if is_affirmation:
-        preferred_language = session.get("preferred_language", "").strip()
-        
-        # If both follow-up artist and mood exist, filter by both.
-        if session.get("follow_up_artist") and session.get("follow_up_mood"):
-            artist_filter = session.get("follow_up_artist")
-            mood_filter = session.get("follow_up_mood")
-            additional_songs = music_df[
-                (music_df['artist_name'].str.lower() == artist_filter.lower()) &
-                (music_df['mood_label'].str.contains(mood_filter, case=False, na=False))
-            ]
-            response_msg = f"Here are more {preferred_language.title()} songs by {artist_filter.title()} that match your mood."
-
-        # If only follow-up artist exists (and no mood)
-        elif session.get("follow_up_artist"):
-            artist_filter = session.get("follow_up_artist")
-            additional_songs = music_df[music_df['artist_name'].str.lower() == artist_filter.lower()]
-            response_msg = f"Here are more {preferred_language.title()} songs by {artist_filter.title()}."
-        
-        # If no artist, but an album filter exists:
-        elif session.get("follow_up_album"):
-            album_filter = session.get("follow_up_album")
-            additional_songs = music_df[music_df['album_movie_name'].str.lower() == album_filter.lower()]
-            response_msg = f"Here are more songs from the album {album_filter.title()}."
-        
-        # If only a mood filter exists:
-        elif session.get("follow_up_mood"):
-            mood_filter = session.get("follow_up_mood")
-            additional_songs = music_df[music_df['mood_label'].str.contains(mood_filter, case=False, na=False)]
-            response_msg = f"Here are more {preferred_language.title()} songs that match your mood."
-        
-        else:
-            return jsonify({"response": "No further recommendations available.", "suggestions": []})
-        
-        # Apply the preferred language filter if necessary:
-        if preferred_language:
-            additional_songs = additional_songs[additional_songs['language'].str.lower() == preferred_language.lower()]
-        
-        # Remove previously recommended songs:
-        prev_recs = session.get("recommended_songs", [])
-        prev_song_names = [song["song_name"].strip().lower() for song in prev_recs]
-        additional_songs = additional_songs[~additional_songs['song_name'].str.strip().str.lower().isin(prev_song_names)]
-        
-        # Deduplicate and limit to 5 suggestions:
-        additional_songs = additional_songs.drop_duplicates(subset=['song_name'])
-        if len(additional_songs) > 5:
-            additional_songs = additional_songs.sample(n=5)
-        
-        suggestions = additional_songs.copy().replace({np.nan: None}).to_dict(orient='records')
-        session["recommended_songs"] = suggestions
-        session["current_index"] = -1
-        session.modified = True
-
-        return jsonify({"response": response_msg, "suggestions": suggestions})
-
-
-    # Normal Query Branch
-    artist, mood, language, album, query_song, album_requested, is_info_query = extract_entities_nlp(user_input)
     filtered = music_df.copy()
     follow_up_msg = ""
     matched_songs = []
 
-    if query_song:
-        if artist:
-            filtered = filtered[(filtered['song_name'].str.lower() == query_song.lower()) & 
-                                (filtered['artist_name'].str.lower() == artist.lower())]
+    if extracted_song:
+        if extracted_artist:
+            # Split the extracted artist string by whitespace.
+            tokens = extracted_artist.split()
+            # If there are more than 2 tokens, assume the primary artist is the first two tokens;
+            # otherwise, use the full extracted artist.
+            if len(tokens) > 2:
+                primary_artist = " ".join(tokens[:2])
+            else:
+                primary_artist = extracted_artist
+            print(f"[DEBUG] Using primary artist: '{primary_artist}' for filtering")
+            # Filter songs where the artist field contains the primary artist (case-insensitive).
+            filtered = filtered[(filtered['song_name'].str.lower() == extracted_song.lower()) & (filtered['artist_name'].str.lower().str.contains(primary_artist.lower(), regex=False))]
+  
         else:
-            filtered = filtered[filtered['song_name'].str.lower() == query_song.lower()]
+            filtered = filtered[filtered['song_name'].str.lower() == extracted_song.lower()]
         if not filtered.empty:
             specific_song = filtered.iloc[0].to_dict()
             session["follow_up_mood"] = specific_song['mood_label']
@@ -1085,68 +880,73 @@ def chat():
             follow_up_msg = "Would you like to listen to more songs like this?"
         else:
             matched_songs = []
+    elif extracted_album:
+        filtered = filtered[filtered['album_movie_name'].str.lower() == extracted_album.lower()]
+        if extracted_artist:
+            # Split the extracted artist string by whitespace.
+            tokens = extracted_artist.split()
+            if len(tokens) > 2:
+                primary_artist = " ".join(tokens[:2])
+            else:
+                primary_artist = extracted_artist
+            print(f"[DEBUG] Using primary artist: '{primary_artist}' for filtering")
+            # Filter songs where the artist field contains the primary artist (case-insensitive).
+            filtered = filtered[filtered['artist_name'].str.lower().str.contains(primary_artist.lower(), regex=False)]
 
-    elif album:
-        filtered = filtered[filtered['album_movie_name'].str.lower() == album.lower()]
-        if artist:
-            filtered = filtered[filtered['artist_name'].str.lower() == artist.lower()]
-        if mood:
-            filtered = filtered[filtered['mood_label'].str.contains(mood, case=False, na=False)]
-        if language:
-            filtered = filtered[filtered['language'].str.lower() == language.lower()]
+        if extracted_mood:
+            filtered = filtered[filtered['mood_label'].str.contains(extracted_mood, case=False, na=False)]
+        if extracted_language:
+            filtered = filtered[filtered['language'].str.lower() == extracted_language.lower()]
         if not filtered.empty:
-            session["follow_up_album"] = album
+            session["follow_up_album"] = extracted_album
             session.pop("follow_up_artist", None)
             session.pop("follow_up_mood", None)
             session["was_specific_song"] = False
-            follow_up_msg = f"Would you like to listen to more songs from the album {album.title()}?"
+            follow_up_msg = f"Would you like to listen to more songs from the album {extracted_album.title()}?"
         matched_songs = filtered.copy().replace({np.nan: None}).to_dict(orient='records')
-
-    elif not query_song and not album:
-        if artist:
-            # Using substring matching:
-            filtered = filtered[filtered['artist_name'].str.lower().str.contains(artist.lower(), regex=False)]
-            session["follow_up_artist"] = artist
+    
+    elif not extracted_song and not extracted_album:
+        if extracted_artist:
+            # Use the primary artist for filtering.
+            tokens = extracted_artist.split()
+            if len(tokens) > 2:
+                primary_artist = " ".join(tokens[:2])
+            else:
+                primary_artist = extracted_artist
+            print(f"[DEBUG] Using primary artist: '{primary_artist}' for filtering")
+            filtered = filtered[filtered['artist_name'].str.lower().str.contains(primary_artist.lower(), regex=False)]
+            # ADD language filtering here:
+            if extracted_language:
+                filtered = filtered[filtered['language'].str.lower() == extracted_language.lower()]
+            # Store the primary artist (e.g., "kumar sanu") as follow-up information.
+            session["follow_up_artist"] = primary_artist
             session.pop("follow_up_album", None)
-            if mood:
-                session["follow_up_mood"] = mood
+            if extracted_mood:
+                session["follow_up_mood"] = extracted_mood
             session["was_specific_song"] = False
-            follow_up_msg = f"Would you like to listen to more songs by {artist.title()}?"
-
-            # Update follow_up_mood only if present in the query.
-            if mood:
-                session["follow_up_mood"] = mood
-            session["was_specific_song"] = False
-            follow_up_msg = f"Would you like to listen to more songs by {artist.title()}?"
-
-        if mood:
-            filtered = filtered[filtered['mood_label'].str.contains(mood, case=False, na=False)]
-        if language:
-            filtered = filtered[filtered['language'].str.lower() == language.lower()]
-
-            matched_songs = filtered.copy().replace({np.nan: None}).to_dict(orient='records')
+            follow_up_msg = f"Would you like to listen to more songs by {primary_artist.title()}?"
         else:
-            matched_songs = []
+            # Clear any previous follow-up artist.
+            session.pop("follow_up_artist", None)
+            if extracted_mood:
+                filtered = filtered[filtered['mood_label'].str.contains(extracted_mood, case=False, na=False)]
+                session["follow_up_mood"] = extracted_mood
+            if extracted_language:
+                filtered = filtered[filtered['language'].str.lower() == extracted_language.lower()]
+            matched_songs = filtered.copy().replace({np.nan: None}).to_dict(orient='records')
 
-    user_id = session.get("username")
-    filtered = filter_disliked_songs(filtered, user_id)
-    matched_songs = filtered.copy().replace({np.nan: None}).to_dict(orient='records') if not matched_songs else matched_songs
 
-    if language:
-        session["preferred_language"] = language
+    if extracted_language:
+        session["preferred_language"] = extracted_language
+        session["follow_up_language"] = extracted_language  # ensure follow-up language is updated
+        print(f"[DEBUG] Updated session language to: {extracted_language}")
     elif matched_songs:
         session["preferred_language"] = matched_songs[0]['language']
 
-    # After filtering and obtaining matched_songs from your music_df
-
     def deduplicate_songs(songs):
-        """
-        Remove duplicate songs based on a normalized song name.
-        """
         unique = []
         seen = set()
         for song in songs:
-            # Use a normalized song name (or track id if available) to determine uniqueness
             song_id = song['song_name'].strip().lower()
             if song_id not in seen:
                 unique.append(song)
@@ -1154,75 +954,74 @@ def chat():
         return unique
 
     def filter_played_songs(songs, played_set):
-        """
-        Filter out songs whose normalized names are in played_set.
-        """
         return [song for song in songs if song['song_name'].strip().lower() not in played_set]
 
+    user_id = session.get("username")
+    
+    def filter_disliked_songs(df, user_id):
+        if user_id:
+            from mongo_integration import get_disliked_song_ids
+            disliked_songs = get_disliked_song_ids(user_id)
+            return df[~df['track_id'].isin(disliked_songs)]
+        return df
+
+    filtered = filter_disliked_songs(filtered, user_id)
     if not matched_songs:
-        response_text = "Sorry, I couldn’t find any songs matching your request."
-    else:
-        # Deduplicate the matched songs
+        matched_songs = filtered.copy().replace({np.nan: None}).to_dict(orient="records")
+
+    # After your filtering and initial matched_songs assignment...
+    matched_songs = deduplicate_songs(matched_songs)
+    if len(matched_songs) > 5:
+        matched_songs = random.sample(matched_songs, 5)
+    
+    # Instead of overwriting matched_songs from the full filtered dataset,
+    # only update if no specific match was found.
+    if not matched_songs:
+        matched_songs = filtered.copy().replace({np.nan: None}).to_dict(orient="records")
         matched_songs = deduplicate_songs(matched_songs)
-        
-        # Retrieve already played songs from the session (stored as lower-case strings)
-        played_songs = session.get('played_songs', [])
-        played_set = set(song.lower() for song in played_songs)
-        
-        # Filter out played songs from the deduplicated list
-        matched_songs = filter_played_songs(matched_songs, played_set)
-        
-        # Limit to 2 recommendations if there are more than needed
-        if len(matched_songs) > 5:
-            matched_songs = random.sample(matched_songs, 5)
-        
-        session['recommended_songs'] = matched_songs
-        session['current_index'] = -1
-        session.modified = True
-
-        if is_info_query:
-            # Information branch: build an information prompt and return early
-            prompt = construct_prompt(user_input, "information_request", artist, mood, language, None)
-            try:
-                response = gemini_client.models.generate_content(
-                    model="gemini-2.0-flash",
-                    contents=prompt,
-                )
-                response_text = response.text.strip()
-            except Exception as e:
-                app.logger.error("Error in Gemini API: %s", e)
-                response_text = "Sorry, there was an error processing your request."
-
-            return jsonify({"response": response_text})
-        else:
-            prompt = construct_prompt(user_input, "song_request", artist, mood, language, matched_songs)
-            if follow_up_msg:
-                prompt += " " + follow_up_msg
-            try:
-                response = gemini_client.models.generate_content(
-                    model="gemini-2.0-flash",
-                    contents=prompt,
-                )
-                response_text = response.text.strip()
-            except Exception as e:
-                app.logger.error("Error in Gemini API: %s", e)
-                response_text = "Sorry, there was an error processing your request."
-
-
+    
+    print(f"[DEBUG] Final suggestions: {json.dumps(matched_songs, indent=5)}")
+    
+    session['recommended_songs'] = matched_songs
+    session['current_index'] = -1
+    session.modified = True
+    
+        # -------------------------- Crafting the Response --------------------------
+    if is_info_query:
+        prompt = construct_prompt(user_input, "information_request", extracted_artist, extracted_mood, extracted_language, None)
+        try:
+            response = gemini_client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+            response_text = response.text.strip()
+        except Exception as e:
+            app.logger.error("Error in Gemini API: %s", e)
+            # Immediately return error response with no suggestions
+            return jsonify({"response": "Sorry, there was an error processing your request. Try again.", "suggestions": []})
+        return jsonify({"response": response_text})
+    else:
+        prompt = construct_prompt(user_input, "song_request", extracted_artist, extracted_mood, extracted_language, matched_songs)
+        if follow_up_msg:
+            prompt += " " + follow_up_msg
+        try:
+            response = gemini_client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+            response_text = response.text.strip()
+        except Exception as e:
+            app.logger.error("Error in Gemini API: %s", e)
+            # Return error response and do not pass along any suggestions
+            return jsonify({"response": "Sorry, there was an error processing your request. Try again.", "suggestions": []})
+    
     return jsonify({"response": response_text, "suggestions": matched_songs})
 
+
 def deduplicate_songs(songs):
-    """
-    Remove duplicate songs based on a normalized song name.
-    This function ensures that the same song (even if it appears with different moods)
-    appears only once in the returned list.
-    """
-    unique = {}
+    unique = []
+    seen = set()
     for song in songs:
-        norm_name = normalize_text(song['song_name'])
-        if norm_name not in unique:
-            unique[norm_name] = song
-    return list(unique.values())
+        # Prefer to use a unique identifier if available (e.g., track_id), otherwise fallback to normalized song name.
+        unique_id = song.get('track_id') or song['song_name'].strip().lower()
+        if unique_id not in seen:
+            unique.append(song)
+            seen.add(unique_id)
+    return unique
 
 
 @app.route('/next_song', methods=['GET'])

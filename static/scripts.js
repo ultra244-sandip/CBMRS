@@ -235,6 +235,12 @@ function updatePlayer(song, autoPlay = false) {
   const backgroundDiv = document.createElement('div');
   backgroundDiv.className = 'player-background';
 
+  const imageDiv = document.createElement('div');
+  imageDiv.className = "song-image";
+
+  const controlsAndFeedback = document.createElement('div');
+  controlsAndFeedback.className = "controls-and-feedback";
+
   const controlsDiv = document.createElement('div');
   controlsDiv.className = 'player-controls';
 
@@ -272,67 +278,52 @@ function updatePlayer(song, autoPlay = false) {
 
   const songInfo = document.createElement('div');
   songInfo.id = 'song-info';
+  
+  const marqueeSpan = document.createElement('span');
+  marqueeSpan.className = 'marquee-text';
+  marqueeSpan.textContent = `${song.song_name} by ${song.artist_name}`;
+  songInfo.appendChild(marqueeSpan);
 
   const audio = document.createElement('audio');
   audio.src = `/proxy_audio?url=${encodeURIComponent(song.audio_url)}`;
-  songInfo.textContent = `${song.song_name} by ${song.artist_name}`;
 
-  const defaultThumbnail = '/static/default_thumbnail.jpg';
+  const defaultThumbnail = '/static/images/default_thumbnail.jpg';
   const img = new Image();
-  img.onload = () => { backgroundDiv.style.backgroundImage = `url(${img.src})`; };
-  img.onerror = () => { backgroundDiv.style.backgroundImage = `url(${defaultThumbnail})`; };
+  img.onload = () => {
+    backgroundDiv.style.backgroundImage = `url(${img.src})`;
+    imageDiv.appendChild(img);
+  };
+  img.onerror = () => {
+    backgroundDiv.style.backgroundImage = `url(${defaultThumbnail})`;
+    imageDiv.appendChild(img);
+  };
   img.src = song.thumbnail_url || defaultThumbnail;
 
   playerDiv.appendChild(backgroundDiv);
+  playerDiv.appendChild(imageDiv);
+  controlsDiv.appendChild(songInfo);
   controlsDiv.appendChild(playPauseBtn);
   controlsDiv.appendChild(progressSlider);
   controlsDiv.appendChild(nextBtn);
-  controlsDiv.appendChild(songInfo);
-  controlsDiv.appendChild(feedbackContainer);
-  playerDiv.appendChild(controlsDiv);
+  controlsAndFeedback.appendChild(controlsDiv);
+  controlsAndFeedback.appendChild(feedbackContainer);
+  playerDiv.appendChild(controlsAndFeedback);
   playerDiv.appendChild(audio);
 
   appendMessage(`Now Playing... ${song.song_name}`, 'system', true);
   chatMessages.appendChild(playerDiv);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 
-  // Retry function for playing audio
-  async function playAudioWithRetry() {
-    const maxRetries = 1; // Total of 2 attempts (initial + 1 retry)
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        await audio.play();
-        return true; // Success
-      } catch (err) {
-        if (err.name === 'NotSupportedError' && attempt < maxRetries) {
-          console.log(`Attempt ${attempt + 1} failed. Retrying in 1 second...`);
-          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
-        } else {
-          console.error('Error playing audio after retries:', err);
-          return false; // Failure
-        }
-      }
-    }
-    return false; // Shouldn't reach here, but added for completeness
-  }
-
-  // Play/Pause button with retry
-  playPauseBtn.addEventListener('click', async () => {
+  playPauseBtn.addEventListener('click', () => {
     if (audio.paused) {
-      const success = await playAudioWithRetry();
-      if (success) {
-        playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
-      } else {
-        appendMessage("Failed to play the song after retries.", 'error');
-        nextSongSequence(); // Move to next song
-      }
+      audio.play().catch(err => console.error('Error playing audio:', err));
+      playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
     } else {
       audio.pause();
       playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
     }
   });
 
-  // Next button event listener
   nextBtn.addEventListener('click', () => {
     if (globalPrefetchedSong && globalPrefetchedSong.audio_url) {
       currentSuggestionIndex++;
@@ -346,7 +337,6 @@ function updatePlayer(song, autoPlay = false) {
     }
   });
 
-  // Progress slider update
   audio.addEventListener('timeupdate', () => {
     if (isFinite(audio.duration) && audio.duration > 0) {
       progressSlider.value = (audio.currentTime / audio.duration) * 100;
@@ -359,7 +349,6 @@ function updatePlayer(song, autoPlay = false) {
     }
   });
 
-  // On audio end, move to next song
   audio.onended = () => {
     setTimeout(() => {
       if (globalPrefetchedSong) {
@@ -374,21 +363,15 @@ function updatePlayer(song, autoPlay = false) {
     }, 4000);
   };
 
-  // Autoplay with retry
   if (autoPlay) {
-    audio.oncanplay = async () => {
-      const success = await playAudioWithRetry();
-      if (success) {
-        playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
-      } else {
-        appendMessage("Failed to play the song after retries.", 'error');
-        nextSongSequence(); // Move to next song
-      }
+    audio.oncanplay = () => {
+      audio.play()
+        .then(() => { playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>'; })
+        .catch(err => console.error('Error during autoplay:', err));
       audio.oncanplay = null;
     };
   }
 
-  // Prefetch next song
   prefetchNextSong().then(prefetchedSong => {
     globalPrefetchedSong = prefetchedSong;
     console.log("Next song prefetched:", globalPrefetchedSong);
@@ -404,22 +387,30 @@ function startSongSequence() {
 }
 
 async function nextSongSequence() {
+  // Assuming globalSuggestions is your recommended songs list and currentSuggestionIndex is your current pointer.
   let nextIndex = currentSuggestionIndex + 1;
 
+  // If we've exhausted the list, push the end-of-list message.
   if (nextIndex >= globalSuggestions.length) {
     const endMessage = "You've reached the end of the song list. Want more recommendations?";
     appendMessage(endMessage, 'system', true);
+    // Optionally set a flag so that a new recommendations request is triggered.
     return;
   }
 
+  // Otherwise, get the next song:
   const nextSong = globalSuggestions[nextIndex];
 
+  // If nextSong has an invalid URL, prefetch it:
   if (!nextSong.audio_url || nextSong.audio_url === '' || nextSong.audio_url === 'undefined') {
     let prefetched = await prefetchSong(nextSong);
     globalSuggestions[nextIndex] = prefetched;
   }
   
+  // Update the global pointer
   currentSuggestionIndex = nextIndex;
+  
+  // Update the player (which then appends the "Now Playing…" message).
   updatePlayer(globalSuggestions[nextIndex], true);
 }
 

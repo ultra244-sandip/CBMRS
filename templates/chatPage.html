@@ -16,10 +16,11 @@
       // Inject chatId using tojson to preserve type:
       var chatId = {{ chat_id|default(None)|tojson }};
       console.log("Current chatId:", chatId);
+
       // Also ensure chatHistory is defined:
       var chatHistory = {{ chat_messages|default([])|tojson }};
       console.log("Initial chatHistory:", chatHistory);
-      </script>
+    </script>
   </head>
   <body>
     <!-- Header Section -->
@@ -32,16 +33,17 @@
       </div>
       <div class="user-container dropdown" id="user-menu">
         <span style="cursor: pointer" onclick="toggleMenu()">
-          {% if 'Guest' %}
-          <i class="fa-solid fa-robot fa-xl" style="color: #000000"></i>
-          {% elif session.get('subscription') == 'Regular' %}
-          <i class="fa-solid fa-circle-user fa-xl" style="color: #000000"></i>
+          {% if username %} {% if session.get('subscription') == 'Regular' %}
+          <i class="fa-solid fa-user fa-xl" style="color: #000000"></i>
           {% elif session.get('subscription') == 'Premium' %}
           <i class="fa-solid fa-crown fa-xl" style="color: #ecd927dc"></i>
+          {% endif %} {% else %}
+          <i class="fa-solid fa-robot fa-xl" style="color: #000000"></i>
           {% endif %}
-          <span id="username-display" style="font-weight: bold">
-          {{ username if username else 'Guest' }}</span>
-          </span>
+          <span id="username-display" style="font-weight: bold"
+            >{{ username if username else 'Guest' }}</span
+          >
+        </span>
         <div class="dropdown-content" id="dropdown-menu">
           <a href="/">Home</a>
           {% if username %}
@@ -67,7 +69,7 @@
         message.text and message.text.strip() %}
         <div class="{{ message.sender }}-message">{{ message.text | e}}</div>
         {% endif %} {% endfor %} {% endif %}
-        </div>
+      </div>
       <div class="chat-input input-area">
         <input type="text" id="message-input" placeholder="Type a message..." />
         <i
